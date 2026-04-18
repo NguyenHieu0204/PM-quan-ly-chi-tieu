@@ -31,6 +31,11 @@ async function addOrUpdateExpense() {
         body: JSON.stringify(data)
     });
 
+    if (res.status === 401) {
+        window.location.href = '/auth';
+        return;
+    }
+
     if (res.ok) {
         resetForm();
         loadData();
@@ -67,6 +72,10 @@ async function deleteExpense(id) {
     if (!confirm('Bạn có chắc chắn muốn xóa giao dịch này?')) return;
 
     const res = await fetch(`/delete/${id}`, { method: 'DELETE' });
+    if (res.status === 401) {
+        window.location.href = '/auth';
+        return;
+    }
     if (res.ok) {
         loadData();
     }
@@ -79,6 +88,10 @@ async function loadData() {
     }
 
     const res = await fetch(url);
+    if (res.status === 401) {
+        window.location.href = '/auth';
+        return;
+    }
     const data = await res.json();
 
     let html = `

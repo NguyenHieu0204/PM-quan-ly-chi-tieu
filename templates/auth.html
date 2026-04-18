@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xpense - Đăng nhập</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .auth-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 40px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .auth-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .auth-header h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        .auth-form input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            background: #1e293b;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: white;
+        }
+        .auth-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .auth-btn:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+        .toggle-text {
+            text-align: center;
+            margin-top: 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .toggle-text a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        #message {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+            min-height: 20px;
+        }
+        .success { color: var(--success); }
+        .error { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-header">
+            <h1 id="authTitle">Chào mừng bạn</h1>
+            <p id="authSubtitle" style="color: var(--text-muted)">Đăng nhập để quản lý chi tiêu</p>
+        </div>
+        
+        <div class="auth-form">
+            <input type="email" id="email" placeholder="Email của bạn" required>
+            <input type="password" id="password" placeholder="Mật khẩu" required>
+            <button id="authBtn" class="auth-btn" onclick="handleAuth()">Đăng nhập</button>
+        </div>
+
+        <div id="message"></div>
+
+        <div class="toggle-text">
+            <span id="toggleQuestion">Chưa có tài khoản?</span>
+            <a href="#" id="toggleAction" onclick="toggleMode()">Đăng ký ngay</a>
+        </div>
+    </div>
+
+    <script>
+        let isLogin = true;
+
+        function toggleMode() {
+            isLogin = !isLogin;
+            const title = document.getElementById('authTitle');
+            const subtitle = document.getElementById('authSubtitle');
+            const btn = document.getElementById('authBtn');
+            const question = document.getElementById('toggleQuestion');
+            const action = document.getElementById('toggleAction');
+            const msg = document.getElementById('message');
+
+            msg.innerText = '';
+            
+            if (isLogin) {
+                title.innerText = 'Chào mừng bạn';
+                subtitle.innerText = 'Đăng nhập để quản lý chi tiêu';
+                btn.innerText = 'Đăng nhập';
+                question.innerText = 'Chưa có tài khoản?';
+                action.innerText = 'Đăng ký ngay';
+            } else {
+                title.innerText = 'Tạo tài khoản';
+                subtitle.innerText = 'Bắt đầu hành trình tài chính mới';
+                btn.innerText = 'Đăng ký';
+                question.innerText = 'Đã có tài khoản?';
+                action.innerText = 'Đăng nhập ngay';
+            }
+        }
+
+        async function handleAuth() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const msg = document.getElementById('message');
+
+            if (!email || !password) {
+                msg.innerText = 'Vui lòng điền đầy đủ thông tin';
+                msg.className = 'error';
+                return;
+            }
+
+            const url = isLogin ? '/login' : '/register';
+            msg.innerText = 'Đang xử lý...';
+            msg.className = '';
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    if (isLogin) {
+                        window.location.href = '/';
+                    } else {
+                        msg.innerText = data.message || 'Đăng ký thành công! Hãy đăng nhập.';
+                        msg.className = 'success';
+                        setTimeout(toggleMode, 2000);
+                    }
+                } else {
+                    msg.innerText = data.message || 'Lỗi: ' + res.statusText;
+                    msg.className = 'error';
+                }
+            } catch (err) {
+                msg.innerText = 'Lỗi kết nối server';
+                msg.className = 'error';
+            }
+        }
+    </script>
+</body>
+</html>

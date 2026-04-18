@@ -47,10 +47,11 @@
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                     <h1>Xpense</h1>
-                    <p style="color: var(--text-muted)">Quản lý dòng tiền của bạn một cách hiện đại</p>
+                    <p style="color: var(--text-muted)">Chào, <span style="color: var(--primary); font-weight: 600;">{{ user.email }}</span> 👋</p>
                 </div>
                 <div class="system-actions">
-                    <button class="btn btn-secondary btn-small" onclick="window.location.href='/backup'">Sao lưu (.db)</button>
+                    <button class="btn btn-secondary btn-small" onclick="window.location.href='/logout'" style="background: #ef4444; border-color: #ef4444;">Đăng xuất</button>
+                    <button class="btn btn-secondary btn-small" onclick="window.location.href='/backup'">Sao lưu (.json)</button>
                     <button class="btn btn-secondary btn-small" onclick="document.getElementById('importFile').click()">Nhập dữ liệu</button>
                     <input type="file" id="importFile" style="display:none" accept=".db" onchange="importData(this)">
                 </div>
