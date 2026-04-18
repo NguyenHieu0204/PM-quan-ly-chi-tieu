@@ -1,18 +1,19 @@
 from flask import Flask, request, jsonify, render_template, send_file
-import sqlite3
 import os
 import pandas as pd
-import shutil
 from datetime import datetime
 import io
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# Supabase Setup
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
 
 @app.route('/')
 def index():
@@ -21,37 +22,29 @@ def index():
 @app.route('/add', methods=['POST'])
 def add_expense():
     data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO expenses (amount, type, description, date)
-        VALUES (?, ?, ?, ?)
-    ''', (float(data['amount']), data['type'], data['description'], data['date']))
-    conn.commit()
-    conn.close()
+    # Supabase expects float for amount
+    res = supabase.table("expenses").insert({
+        "amount": float(data['amount']),
+        "type": data['type'],
+        "description": data['description'],
+        "date": data['date']
+    }).execute()
     return jsonify({'status': 'ok'})
 
 @app.route('/update', methods=['POST'])
 def update_expense():
     data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE expenses 
-        SET amount = ?, type = ?, description = ?, date = ?
-        WHERE id = ?
-    ''', (float(data['amount']), data['type'], data['description'], data['date'], int(data['id'])))
-    conn.commit()
-    conn.close()
+    res = supabase.table("expenses").update({
+        "amount": float(data['amount']),
+        "type": data['type'],
+        "description": data['description'],
+        "date": data['date']
+    }).eq("id", int(data['id'])).execute()
     return jsonify({'status': 'ok'})
 
 @app.route('/delete/<int:id>', methods=['DELETE', 'POST'])
 def delete_expense(id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM expenses WHERE id = ?', (id,))
-    conn.commit()
-    conn.close()
+    supabase.table("expenses").delete().eq("id", id).execute()
     return jsonify({'status': 'ok'})
 
 @app.route('/list')
@@ -59,43 +52,35 @@ def get_expenses():
     start = request.args.get('start')
     end = request.args.get('end')
     
-    conn = get_db()
-    cursor = conn.cursor()
-    query = 'SELECT * FROM expenses'
-    params = []
+    query = supabase.table("expenses").select("*")
     if start and end:
-        query += ' WHERE date BETWEEN ? AND ?'
-        params = [start, end]
-    query += ' ORDER BY date DESC, id DESC'
-    cursor.execute(query, params)
-    rows = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return jsonify(rows)
+        query = query.gte("date", start).lte("date", end)
+    
+    res = query.order("date", desc=True).order("id", desc=True).execute()
+    return jsonify(res.data)
 
 @app.route('/export')
 def export_excel():
     start = request.args.get('start')
     end = request.args.get('end')
     
-    conn = get_db()
-    query = 'SELECT * FROM expenses'
-    params = []
+    query = supabase.table("expenses").select("*")
     if start and end:
-        query += ' WHERE date BETWEEN ? AND ?'
-        params = [start, end]
-    query += ' ORDER BY date DESC'
+        query = query.gte("date", start).lte("date", end)
     
-    df = pd.read_sql_query(query, conn, params=params)
-    conn.close()
+    res = query.order("date", desc=True).execute()
+    df = pd.DataFrame(res.data)
     
     if df.empty:
         return "No data to export", 400
         
-    df.columns = ["ID", "Số tiền (VNĐ)", "Phân loại", "Nội dung", "Ngày"]
+    # Reorder/rename columns for export
+    df_export = df[["id", "amount", "type", "description", "date"]]
+    df_export.columns = ["ID", "Số tiền (VNĐ)", "Phân loại", "Nội dung", "Ngày"]
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Chi tiết')
+        df_export.to_excel(writer, index=False, sheet_name='Chi tiết')
     output.seek(0)
     
     return send_file(output, 
@@ -103,23 +88,13 @@ def export_excel():
                      download_name=f"Bao_cao_chi_tieu_{datetime.now().strftime('%Y%m%d')}.xlsx",
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
+# Backup/Import functionality can be adapted or removed for Supabase
+# For now, I'll keep simple JSON backup
 @app.route('/backup')
-def backup_db():
-    return send_file(DB_PATH, as_attachment=True, download_name=f"Backup_TaiChinh_{datetime.now().strftime('%Y%m%d')}.db")
-
-@app.route('/import', methods=['POST'])
-def import_db():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    
-    if file and file.filename.endswith('.db'):
-        shutil.copy2(DB_PATH, DB_PATH + '.bak')
-        file.save(DB_PATH)
-        return jsonify({'status': 'ok'})
-    return jsonify({'error': 'Invalid format'}), 400
+def backup_json():
+    res = supabase.table("expenses").select("*").execute()
+    output = io.BytesIO(str(res.data).encode())
+    return send_file(output, as_attachment=True, download_name=f"Backup_TaiChinh_{datetime.now().strftime('%Y%m%d')}.json")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

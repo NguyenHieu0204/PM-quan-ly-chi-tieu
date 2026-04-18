@@ -3,3 +3,5 @@ customtkinter
 pandas
 tkcalendar
 openpyxl
+supabase
+python-dotenv

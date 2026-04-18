@@ -1,18 +1,19 @@
 import customtkinter as ctk
-import sqlite3
 import os
-import sys
 import pandas as pd
-import shutil
 from datetime import datetime
 from tkinter import messagebox, filedialog
 from tkcalendar import Calendar
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Load credentials
+load_dotenv()
 
 # Configuration
-if getattr(sys, 'frozen', False):
-    DB_PATH = os.path.join(os.path.dirname(sys.executable), 'database.db')
-else:
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database.db')
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -21,12 +22,9 @@ class ExpenseApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Xpense Desktop - Quản lý Chi tiêu")
+        self.title("Xpense Desktop - Quản lý Chi tiêu (Cloud)")
         self.geometry("950x850")
         
-        # Database setup
-        self.init_db()
-
         self.editing_id = None
         self.current_filter = None
 
@@ -38,7 +36,7 @@ class ExpenseApp(ctk.CTk):
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
         
-        self.title_label = ctk.CTkLabel(self.header_frame, text="Xpense Dashboard", font=ctk.CTkFont(size=28, weight="bold"))
+        self.title_label = ctk.CTkLabel(self.header_frame, text="Xpense Cloud Dashboard", font=ctk.CTkFont(size=28, weight="bold"))
         self.title_label.pack(pady=(0, 20))
 
         self.summary_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
@@ -99,16 +97,6 @@ class ExpenseApp(ctk.CTk):
         self.cancel_btn.pack(side="left", padx=10)
         self.cancel_btn.configure(state="disabled")
 
-        # System/Admin Section
-        self.system_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.system_frame.grid(row=2, column=0, padx=20, pady=(0, 2), sticky="ew")
-        
-        self.backup_btn = ctk.CTkButton(self.system_frame, text="Sao lưu (Backup)", width=120, height=32, font=ctk.CTkFont(size=12), fg_color="#334155", command=self.backup_data)
-        self.backup_btn.pack(side="right", padx=5)
-        
-        self.import_btn = ctk.CTkButton(self.system_frame, text="Nhập dữ liệu (Import)", width=120, height=32, font=ctk.CTkFont(size=12), fg_color="#334155", command=self.import_data)
-        self.import_btn.pack(side="right", padx=5)
-
         # 3. Filter Section
         self.filter_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="transparent")
         self.filter_frame.grid(row=3, column=0, padx=20, pady=(0, 5), sticky="ew")
@@ -160,27 +148,11 @@ class ExpenseApp(ctk.CTk):
         value_label.pack(pady=(0, 10))
         return value_label
 
-    def init_db(self):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS expenses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                amount REAL,
-                type TEXT,
-                description TEXT,
-                date TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
-
     def pick_date(self, target_entry):
-        # Popup window for calendar
         window = ctk.CTkToplevel(self)
         window.title("Chọn ngày")
         window.geometry("300x350")
-        window.grab_set() # Modal
+        window.grab_set()
         
         cal = Calendar(window, selectmode='day', 
                       year=datetime.now().year, 
@@ -199,11 +171,9 @@ class ExpenseApp(ctk.CTk):
     def apply_filter(self):
         start = self.start_date_filter.get().strip()
         end = self.end_date_filter.get().strip()
-        
         if not start or not end:
             messagebox.showwarning("Thông báo", "Vui lòng nhập đầy đủ khoảng thời gian")
             return
-            
         self.current_filter = (start, end)
         self.load_data()
         
@@ -217,24 +187,23 @@ class ExpenseApp(ctk.CTk):
         for widget in self.list_frame.winfo_children():
             if widget != self.list_header: widget.destroy()
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        query = "SELECT * FROM expenses"
-        params = []
+        query = supabase.table("expenses").select("*")
         if self.current_filter:
-            query += " WHERE date BETWEEN ? AND ?"
-            params = [self.current_filter[0], self.current_filter[1]]
+            query = query.gte("date", self.current_filter[0]).lte("date", self.current_filter[1])
             
-        query += " ORDER BY date DESC, id DESC"
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        res = query.order("date", desc=True).order("id", desc=True).execute()
+        rows = res.data
         
         total_thu = 0
         total_chi = 0
 
         for row in rows:
-            id, amount, dtype, desc, date = row
+            rid = row['id']
+            amount = row['amount']
+            dtype = row['type']
+            desc = row['description']
+            date = row['date']
+            
             is_thu = dtype.lower() == "thu"
             if is_thu: total_thu += amount
             else: total_chi += amount
@@ -252,8 +221,7 @@ class ExpenseApp(ctk.CTk):
             actions.pack(side="left", padx=10)
             ctk.CTkButton(actions, text="Sửa", width=40, height=24, command=lambda r=row: self.start_edit(r)).pack(side="left", padx=2)
             ctk.CTkButton(actions, text="Xóa", width=40, height=24, fg_color="#ef4444", hover_color="#dc2626", 
-                         command=lambda r_id=id: self.delete_transaction(r_id)).pack(side="left", padx=2)
-        conn.close()
+                         command=lambda r_id=rid: self.delete_transaction(r_id)).pack(side="left", padx=2)
 
         self.thu_card.configure(text=f"{total_thu:,.0f}₫")
         self.chi_card.configure(text=f"{total_chi:,.0f}₫")
@@ -276,39 +244,30 @@ class ExpenseApp(ctk.CTk):
             messagebox.showerror("Lỗi", "Số tiền phải là số!")
             return
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        data = {"description": desc, "amount": amount_val, "type": dtype, "date": date}
         if self.editing_id:
-            cursor.execute("UPDATE expenses SET description=?, amount=?, type=?, date=? WHERE id=?",
-                          (desc, amount_val, dtype, date, self.editing_id))
+            supabase.table("expenses").update(data).eq("id", self.editing_id).execute()
         else:
-            cursor.execute("INSERT INTO expenses (description, amount, type, date) VALUES (?, ?, ?, ?)",
-                          (desc, amount_val, dtype, date))
-        conn.commit()
-        conn.close()
+            supabase.table("expenses").insert(data).execute()
+            
         self.reset_form()
         self.load_data()
 
     def start_edit(self, row):
-        id, amount, dtype, desc, date = row
-        self.editing_id = id
+        self.editing_id = row['id']
         self.desc_entry.delete(0, 'end')
-        self.desc_entry.insert(0, desc)
-        self.amount_var.set(f"{amount:,.0f}")
-        self.type_menu.set(dtype.capitalize())
+        self.desc_entry.insert(0, row['description'])
+        self.amount_var.set(f"{row['amount']:,.0f}")
+        self.type_menu.set(row['type'].capitalize())
         self.date_entry.delete(0, 'end')
-        self.date_entry.insert(0, date)
+        self.date_entry.insert(0, row['date'])
         self.form_title.configure(text="Sửa thông tin giao dịch", text_color="#6366f1")
         self.submit_btn.configure(text="Cập nhật")
         self.cancel_btn.configure(state="normal")
 
-    def delete_transaction(self, id):
+    def delete_transaction(self, rid):
         if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa giao dịch này?"):
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM expenses WHERE id=?", (id,))
-            conn.commit()
-            conn.close()
+            supabase.table("expenses").delete().eq("id", rid).execute()
             self.load_data()
 
     def reset_form(self):
@@ -323,116 +282,35 @@ class ExpenseApp(ctk.CTk):
         self.cancel_btn.configure(state="disabled")
 
     def format_amount_input(self, *args):
-        # Remove commas, get numeric part
         value = self.amount_var.get().replace(",", "")
         if value == "": return
-        
         try:
-            # Handle only numbers
             numeric_value = int(''.join(filter(str.isdigit, value)))
-            # Set formatted value back
-            formatted = f"{numeric_value:,}"
-            self.amount_var.set(formatted)
-        except:
-            # If invalid, just don't format or keep old numeric parts
-            pass
+            self.amount_var.set(f"{numeric_value:,}")
+        except: pass
 
     def export_to_excel(self):
         try:
-            conn = sqlite3.connect(DB_PATH)
-            query = "SELECT * FROM expenses"
-            params = []
+            query = supabase.table("expenses").select("*")
             if self.current_filter:
-                query += " WHERE date BETWEEN ? AND ?"
-                params = [self.current_filter[0], self.current_filter[1]]
-            query += " ORDER BY date DESC"
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
+                query = query.gte("date", self.current_filter[0]).lte("date", self.current_filter[1])
+            res = query.order("date", desc=True).execute()
+            df = pd.DataFrame(res.data)
 
             if df.empty:
                 messagebox.showwarning("Thông báo", "Không có dữ liệu!")
                 return
 
-            df.columns = ["ID", "Số tiền (VNĐ)", "Phân loại", "Nội dung", "Ngày"]
-            total_thu = df[df["Phân loại"] == "thu"]["Số tiền (VNĐ)"].sum()
-            total_chi = df[df["Phân loại"] == "chi"]["Số tiền (VNĐ)"].sum()
-            balance = total_thu - total_chi
+            df_export = df[["id", "amount", "type", "description", "date"]]
+            df_export.columns = ["ID", "Số tiền (VNĐ)", "Phân loại", "Nội dung", "Ngày"]
 
-            df_summary = pd.DataFrame({
-                "Hạng mục": ["Tổng thu", "Tổng chi", "Số dư/Lãi", "Thời gian"],
-                "Giá trị": [total_thu, total_chi, balance, f"{self.current_filter[0]} -> {self.current_filter[1]}" if self.current_filter else "Tất cả"]
-            })
-
-            file_name = f"Bao_cao_chi_tieu_{datetime.now().strftime('%Y%m%d')}"
-            file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"{file_name}.xlsx")
+            file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Bao_cao_chi_tieu_{datetime.now().strftime('%Y%m%d')}.xlsx")
             if not file_path: return
 
-            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                df.to_excel(writer, sheet_name='Chi tiết', index=False)
-                df_summary.to_excel(writer, sheet_name='Tổng hợp', index=False)
+            df_export.to_excel(file_path, index=False)
             messagebox.showinfo("Thành công", f"Đã xuất file Excel thành công!")
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}")
-
-    def backup_data(self):
-        try:
-            file_path = filedialog.asksaveasfilename(
-                defaultextension=".db",
-                filetypes=[("SQLite Database", "*.db")],
-                initialfile=f"Backup_TaiChinh_{datetime.now().strftime('%Y%m%d')}.db"
-            )
-            if not file_path: return
-            
-            shutil.copy2(DB_PATH, file_path)
-            messagebox.showinfo("Thành công", f"Đã sao lưu dữ liệu tại:\n{file_path}")
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi sao lưu: {str(e)}")
-
-    def import_data(self):
-        file_path = filedialog.askopenfilename(
-            filetypes=[("Supported Files", "*.xlsx *.db"), ("Excel files", "*.xlsx"), ("Database files", "*.db")]
-        )
-        if not file_path: return
-
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            imported_count = 0
-
-            if file_path.endswith('.xlsx'):
-                df = pd.read_excel(file_path)
-                # Kiểm tra cột (Dựa trên format xuất của app)
-                # "Số tiền (VNĐ)", "Phân loại", "Nội dung", "Ngày" (Hoặc tên cột tương ứng)
-                for _, row in df.iterrows():
-                    # Attempt to map columns - support both original and export names
-                    amount = row.get("Số tiền (VNĐ)") or row.get("amount")
-                    dtype = (row.get("Phân loại") or row.get("type")).lower()
-                    desc = row.get("Nội dung") or row.get("description")
-                    date = row.get("Ngày") or row.get("date")
-
-                    if amount and dtype and desc and date:
-                        cursor.execute("INSERT INTO expenses (amount, type, description, date) VALUES (?, ?, ?, ?)",
-                                      (float(amount), dtype, str(desc), str(date)))
-                        imported_count += 1
-
-            elif file_path.endswith('.db'):
-                # Merge from another database
-                other_conn = sqlite3.connect(file_path)
-                other_cursor = other_conn.cursor()
-                other_cursor.execute("SELECT amount, type, description, date FROM expenses")
-                other_rows = other_cursor.fetchall()
-                for r in other_rows:
-                    cursor.execute("INSERT INTO expenses (amount, type, description, date) VALUES (?, ?, ?, ?)", r)
-                    imported_count += 1
-                other_conn.close()
-
-            conn.commit()
-            conn.close()
-            self.load_data()
-            messagebox.showinfo("Thành công", f"Đã nhập thành công {imported_count} giao dịch mới!")
-
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể nhập dữ liệu: {str(e)}")
 
 if __name__ == "__main__":
     app = ExpenseApp()
