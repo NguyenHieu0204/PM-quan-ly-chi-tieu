@@ -51,6 +51,7 @@ h1 {
     font-size: 2.5rem;
     background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 0.5rem;
 }
@@ -249,11 +250,84 @@ td:last-child {
 }
 
 @media (max-width: 768px) {
+    body {
+        padding: 1rem;
+    }
+
+    .container {
+        padding: 1.5rem;
+        border-radius: 20px;
+    }
+
+    header div[style] {
+        flex-direction: column;
+        align-items: center !important;
+        text-align: center;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    .system-actions {
+        margin-top: 1rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .btn-small {
+        font-size: 12px;
+        padding: 6px 10px;
+        flex: 1;
+        text-align: center;
+        white-space: nowrap;
+    }
+
     .summary-cards {
         grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .form-section {
+        padding: 1.5rem;
     }
 
     .form-grid {
         grid-template-columns: 1fr;
     }
-}
+
+    .form-section > div[style*="margin-top"] {
+        flex-direction: column;
+    }
+
+    .form-section .btn {
+        width: 100%;
+        margin-left: 0;
+        margin-top: 0.5rem;
+    }
+
+    .filter-section {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-section input {
+        width: 100%;
+    }
+
+    .filter-section .btn-small {
+        margin-top: 0.5rem;
+    }
+
+    td, th {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .badge {
+        font-size: 0.65rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
