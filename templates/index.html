@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xpense - Quản lý tài chính thông minh</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Xpense</h1>
+            <p style="color: var(--text-muted)">Quản lý dòng tiền của bạn một cách hiện đại</p>
+        </header>
+
+        <section class="summary-cards">
+            <div class="card positive">
+                <div class="card-label">Tổng thu</div>
+                <div class="card-value" id="totalThu">0₫</div>
+            </div>
+            <div class="card negative">
+                <div class="card-label">Tổng chi</div>
+                <div class="card-value" id="totalChi">0₫</div>
+            </div>
+            <div class="card neutral" id="laiCard">
+                <div class="card-label">Số dư hiện tại</div>
+                <div class="card-value" id="totalLai">0₫</div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h3 id="formTitle" style="margin-bottom: 1.5rem; font-weight: 700;">Ghi chép giao dịch</h3>
+            <div class="form-grid">
+                <input type="hidden" id="editId">
+                <input type="text" id="desc" placeholder="Nội dung giao dịch (ví dụ: Lương, Mua sắm...)" required>
+                <input type="number" id="amount" placeholder="Số tiền" required>
+                <select id="type">
+                    <option value="thu">Khoản Thu (+)</option>
+                    <option value="chi" selected>Khoản Chi (-)</option>
+                </select>
+                <input type="date" id="date" required>
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                <button id="cancelBtn" class="btn btn-secondary" onclick="resetForm()" style="display:none;">Hủy
+                    bỏ</button>
+                <button id="submitBtn" class="btn btn-primary" onclick="addOrUpdateExpense()">Lưu giao dịch</button>
+            </div>
+        </section>
+
+        <section class="list-section">
+            <h3 style="margin-bottom: 1.5rem; font-weight: 700;">Lịch sử giao dịch</h3>
+            <div class="table-container">
+                <table id="table">
+                    <!-- Table content will be injected by script.js -->
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
