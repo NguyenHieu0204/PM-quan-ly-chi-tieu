@@ -13,32 +13,146 @@ load_dotenv()
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+APP_INVITE_CODE = os.environ.get("APP_INVITE_CODE", "xpense_code_123")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-class ExpenseApp(ctk.CTk):
+class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.title("Xpense Desktop - Quản lý Chi tiêu (Cloud)")
         self.geometry("950x850")
         
+        self.session_user = None
         self.editing_id = None
         self.current_filter = None
 
-        # UI Layout
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(4, weight=1)
+        self.login_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        
+        self.build_login_screen()
+
+        self.show_login()
+
+    def show_login(self):
+        self.main_frame.pack_forget()
+        self.login_frame.pack(fill="both", expand=True)
+
+    def show_main(self):
+        self.login_frame.pack_forget()
+        self.main_frame.pack(fill="both", expand=True)
+        self.build_main_screen()
+        self.load_data()
+
+    # ================= LOGIN ENVIROMENT =================
+    
+    def build_login_screen(self):
+        container = ctk.CTkFrame(self.login_frame, width=400, corner_radius=20)
+        container.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.auth_title = ctk.CTkLabel(container, text="Đăng nhập", font=ctk.CTkFont(size=32, weight="bold"))
+        self.auth_title.pack(pady=(40, 10))
+
+        self.auth_email = ctk.CTkEntry(container, placeholder_text="Email của bạn", width=300, height=45, font=ctk.CTkFont(size=14))
+        self.auth_email.pack(pady=10)
+
+        self.auth_pwd = ctk.CTkEntry(container, placeholder_text="Mật khẩu", show="*", width=300, height=45, font=ctk.CTkFont(size=14))
+        self.auth_pwd.pack(pady=10)
+
+        self.auth_code = ctk.CTkEntry(container, placeholder_text="Mã đăng ký (bắt buộc)", width=300, height=45, font=ctk.CTkFont(size=14))
+        # Initialy hidden
+        
+        self.auth_action_btn = ctk.CTkButton(container, text="Đăng nhập", width=300, height=45, font=ctk.CTkFont(size=14, weight="bold"), command=self.handle_auth)
+        self.auth_action_btn.pack(pady=(20, 10))
+
+        self.auth_mode_btn = ctk.CTkButton(container, text="Chưa có tài khoản? Đăng ký ngay", fg_color="transparent", text_color="#3b82f6", hover_color="#1e293b", command=self.toggle_auth_mode)
+        self.auth_mode_btn.pack(pady=(0, 30))
+
+        self.is_login_mode = True
+
+    def toggle_auth_mode(self):
+        self.is_login_mode = not self.is_login_mode
+        if self.is_login_mode:
+            self.auth_title.configure(text="Đăng nhập")
+            self.auth_action_btn.configure(text="Đăng nhập")
+            self.auth_mode_btn.configure(text="Chưa có tài khoản? Đăng ký ngay")
+            self.auth_code.pack_forget()
+        else:
+            self.auth_title.configure(text="Tạo tài khoản")
+            self.auth_action_btn.configure(text="Đăng ký")
+            self.auth_mode_btn.configure(text="Đã có tài khoản? Đăng nhập")
+            self.auth_code.pack(after=self.auth_pwd, pady=10)
+
+    def handle_auth(self):
+        email = self.auth_email.get().strip()
+        pwd = self.auth_pwd.get()
+        code = self.auth_code.get().strip()
+
+        if not email or not pwd:
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập Email và Mật khẩu.")
+            return
+
+        self.auth_action_btn.configure(text="Đang xử lý...", state="disabled")
+        self.update()
+
+        try:
+            if self.is_login_mode:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": pwd})
+                if res.user:
+                    self.session_user = res.user
+                    self.show_main()
+            else:
+                if code != APP_INVITE_CODE:
+                    messagebox.showerror("Từ chối", "Mã đăng ký không hợp lệ!")
+                else:
+                    res = supabase.auth.sign_up({"email": email, "password": pwd})
+                    if res.user:
+                        messagebox.showinfo("Thành công", "Đăng ký thành công! Bạn có thể đăng nhập ngay.")
+                        self.toggle_auth_mode()
+        except Exception as e:
+            messagebox.showerror("Lỗi xác thực", str(e))
+        finally:
+            self.auth_action_btn.configure(text="Đăng nhập" if self.is_login_mode else "Đăng ký", state="normal")
+
+    def handle_logout(self):
+        try:
+            supabase.auth.sign_out()
+        except:
+            pass
+        self.session_user = None
+        
+        # Clear main frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+            
+        self.show_login()
+
+
+    # ================= MAIN DASHBOARD =================
+
+    def build_main_screen(self):
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(4, weight=1)
 
         # 1. Header & Summary
-        self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.header_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
         
-        self.title_label = ctk.CTkLabel(self.header_frame, text="Xpense Cloud Dashboard", font=ctk.CTkFont(size=28, weight="bold"))
-        self.title_label.pack(pady=(0, 20))
+        # Header Info
+        header_top = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        header_top.pack(fill="x", pady=(0, 20))
+        
+        title_info = ctk.CTkFrame(header_top, fg_color="transparent")
+        title_info.pack(side="left")
+        ctk.CTkLabel(title_info, text="Xpense", font=ctk.CTkFont(size=28, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(title_info, text=f"Chào, {self.session_user.email} 👋", text_color="#3b82f6", font=ctk.CTkFont(weight="bold")).pack(anchor="w")
 
+        ctk.CTkButton(header_top, text="Đăng xuất", fg_color="#ef4444", hover_color="#dc2626", width=100, command=self.handle_logout).pack(side="right")
+
+        # Cards
         self.summary_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         self.summary_frame.pack(fill="x")
         self.summary_frame.grid_columnconfigure((0, 1, 2), weight=1)
@@ -48,7 +162,7 @@ class ExpenseApp(ctk.CTk):
         self.lai_card = self.create_card(self.summary_frame, "SỐ DƯ (LÃI)", "#6366f1", 2)
 
         # 2. Form Section
-        self.form_frame = ctk.CTkFrame(self, corner_radius=15, border_width=1, border_color="#334155")
+        self.form_frame = ctk.CTkFrame(self.main_frame, corner_radius=15, border_width=1, border_color="#334155")
         self.form_frame.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
         
         self.form_title = ctk.CTkLabel(self.form_frame, text="Ghi chép giao dịch", font=ctk.CTkFont(weight="bold"))
@@ -98,7 +212,7 @@ class ExpenseApp(ctk.CTk):
         self.cancel_btn.configure(state="disabled")
 
         # 3. Filter Section
-        self.filter_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="transparent")
+        self.filter_frame = ctk.CTkFrame(self.main_frame, corner_radius=10, fg_color="transparent")
         self.filter_frame.grid(row=3, column=0, padx=20, pady=(0, 5), sticky="ew")
         
         ctk.CTkLabel(self.filter_frame, text="Lọc dữ liệu theo khoảng thời gian:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 10))
@@ -126,7 +240,7 @@ class ExpenseApp(ctk.CTk):
         self.reset_filter_btn.pack(side="left", padx=5)
 
         # 4. List Section
-        self.list_frame = ctk.CTkScrollableFrame(self, label_text="Lịch sử giao dịch")
+        self.list_frame = ctk.CTkScrollableFrame(self.main_frame, label_text="Lịch sử giao dịch")
         self.list_frame.grid(row=4, column=0, padx=20, pady=5, sticky="nsew")
 
         self.list_header = ctk.CTkFrame(self.list_frame, fg_color="#1e293b")
@@ -137,7 +251,6 @@ class ExpenseApp(ctk.CTk):
         ctk.CTkLabel(self.list_header, text="Số tiền", width=120).pack(side="left", padx=10)
         ctk.CTkLabel(self.list_header, text="Hành động", width=100).pack(side="left", padx=10)
 
-        self.load_data()
 
     def create_card(self, parent, label, color, col):
         card = ctk.CTkFrame(parent, corner_radius=15, border_width=1, border_color=color)
@@ -184,49 +297,54 @@ class ExpenseApp(ctk.CTk):
         self.load_data()
 
     def load_data(self):
+        if not self.session_user: return
+
         for widget in self.list_frame.winfo_children():
             if widget != self.list_header: widget.destroy()
 
-        query = supabase.table("expenses").select("*")
-        if self.current_filter:
-            query = query.gte("date", self.current_filter[0]).lte("date", self.current_filter[1])
+        try:
+            query = supabase.table("expenses").select("*") # User ID filter is handled natively by RLS! (No .eq needed here just like web since we authenticated)
+            if self.current_filter:
+                query = query.gte("date", self.current_filter[0]).lte("date", self.current_filter[1])
+                
+            res = query.order("date", desc=True).order("id", desc=True).execute()
+            rows = res.data
             
-        res = query.order("date", desc=True).order("id", desc=True).execute()
-        rows = res.data
-        
-        total_thu = 0
-        total_chi = 0
+            total_thu = 0
+            total_chi = 0
 
-        for row in rows:
-            rid = row['id']
-            amount = row['amount']
-            dtype = row['type']
-            desc = row['description']
-            date = row['date']
-            
-            is_thu = dtype.lower() == "thu"
-            if is_thu: total_thu += amount
-            else: total_chi += amount
+            for row in rows:
+                rid = row['id']
+                amount = row['amount']
+                dtype = row['type']
+                desc = row['description']
+                date = row['date']
+                
+                is_thu = dtype.lower() == "thu"
+                if is_thu: total_thu += amount
+                else: total_chi += amount
 
-            row_frame = ctk.CTkFrame(self.list_frame, fg_color="transparent")
-            row_frame.pack(fill="x", pady=2)
-            ctk.CTkLabel(row_frame, text=date, width=100).pack(side="left", padx=10)
-            ctk.CTkLabel(row_frame, text=desc, width=250, anchor="w").pack(side="left", padx=10)
-            badge_color = "#10b981" if is_thu else "#ef4444"
-            ctk.CTkLabel(row_frame, text=dtype.upper(), width=80, text_color=badge_color, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
-            amount_str = f"{'+' if is_thu else '-'}{amount:,.0f}₫"
-            ctk.CTkLabel(row_frame, text=amount_str, width=120, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
+                row_frame = ctk.CTkFrame(self.list_frame, fg_color="transparent")
+                row_frame.pack(fill="x", pady=2)
+                ctk.CTkLabel(row_frame, text=date, width=100).pack(side="left", padx=10)
+                ctk.CTkLabel(row_frame, text=desc, width=250, anchor="w").pack(side="left", padx=10)
+                badge_color = "#10b981" if is_thu else "#ef4444"
+                ctk.CTkLabel(row_frame, text=dtype.upper(), width=80, text_color=badge_color, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
+                amount_str = f"{'+' if is_thu else '-'}{amount:,.0f}₫"
+                ctk.CTkLabel(row_frame, text=amount_str, width=120, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
 
-            actions = ctk.CTkFrame(row_frame, fg_color="transparent")
-            actions.pack(side="left", padx=10)
-            ctk.CTkButton(actions, text="Sửa", width=40, height=24, command=lambda r=row: self.start_edit(r)).pack(side="left", padx=2)
-            ctk.CTkButton(actions, text="Xóa", width=40, height=24, fg_color="#ef4444", hover_color="#dc2626", 
-                         command=lambda r_id=rid: self.delete_transaction(r_id)).pack(side="left", padx=2)
+                actions = ctk.CTkFrame(row_frame, fg_color="transparent")
+                actions.pack(side="left", padx=10)
+                ctk.CTkButton(actions, text="Sửa", width=40, height=24, command=lambda r=row: self.start_edit(r)).pack(side="left", padx=2)
+                ctk.CTkButton(actions, text="Xóa", width=40, height=24, fg_color="#ef4444", hover_color="#dc2626", 
+                            command=lambda r_id=rid: self.delete_transaction(r_id)).pack(side="left", padx=2)
 
-        self.thu_card.configure(text=f"{total_thu:,.0f}₫")
-        self.chi_card.configure(text=f"{total_chi:,.0f}₫")
-        balance = total_thu - total_chi
-        self.lai_card.configure(text=f"{balance:,.0f}₫", text_color="#10b981" if balance >= 0 else "#ef4444")
+            self.thu_card.configure(text=f"{total_thu:,.0f}₫")
+            self.chi_card.configure(text=f"{total_chi:,.0f}₫")
+            balance = total_thu - total_chi
+            self.lai_card.configure(text=f"{balance:,.0f}₫", text_color="#10b981" if balance >= 0 else "#ef4444")
+        except Exception as e:
+             messagebox.showerror("Lỗi tải dữ liệu", str(e))
 
     def save_transaction(self):
         desc = self.desc_entry.get()
@@ -245,13 +363,17 @@ class ExpenseApp(ctk.CTk):
             return
 
         data = {"description": desc, "amount": amount_val, "type": dtype, "date": date}
-        if self.editing_id:
-            supabase.table("expenses").update(data).eq("id", self.editing_id).execute()
-        else:
-            supabase.table("expenses").insert(data).execute()
-            
-        self.reset_form()
-        self.load_data()
+        
+        try:
+            if self.editing_id:
+                supabase.table("expenses").update(data).eq("id", self.editing_id).execute()
+            else:
+                supabase.table("expenses").insert(data).execute()
+                
+            self.reset_form()
+            self.load_data()
+        except Exception as e:
+            messagebox.showerror("Lỗi lưu dữ liệu", str(e))
 
     def start_edit(self, row):
         self.editing_id = row['id']
@@ -267,8 +389,11 @@ class ExpenseApp(ctk.CTk):
 
     def delete_transaction(self, rid):
         if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa giao dịch này?"):
-            supabase.table("expenses").delete().eq("id", rid).execute()
-            self.load_data()
+            try:
+                supabase.table("expenses").delete().eq("id", rid).execute()
+                self.load_data()
+            except Exception as e:
+                messagebox.showerror("Lỗi xóa dữ liệu", str(e))
 
     def reset_form(self):
         self.editing_id = None
@@ -313,5 +438,5 @@ class ExpenseApp(ctk.CTk):
             messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}")
 
 if __name__ == "__main__":
-    app = ExpenseApp()
+    app = App()
     app.mainloop()
