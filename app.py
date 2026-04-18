@@ -41,6 +41,12 @@ def auth():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
+    invite_code = data.get('invite_code')
+    expected_code = os.environ.get('APP_INVITE_CODE', 'xpense123')
+    
+    if invite_code != expected_code:
+        return jsonify({'status': 'error', 'message': 'Mã đăng ký không hợp lệ!'}), 403
+
     try:
         res = supabase.auth.sign_up({
             "email": data['email'],

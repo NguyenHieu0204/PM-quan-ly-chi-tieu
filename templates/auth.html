@@ -80,6 +80,7 @@
         <div class="auth-form">
             <input type="email" id="email" placeholder="Email của bạn" required>
             <input type="password" id="password" placeholder="Mật khẩu" required>
+            <input type="text" id="inviteCode" placeholder="Mã cho phép đăng ký (bắt buộc)" style="display: none;">
             <button id="authBtn" class="auth-btn" onclick="handleAuth()">Đăng nhập</button>
         </div>
 
@@ -111,12 +112,15 @@
                 btn.innerText = 'Đăng nhập';
                 question.innerText = 'Chưa có tài khoản?';
                 action.innerText = 'Đăng ký ngay';
+                document.getElementById('inviteCode').style.display = 'none';
+                document.getElementById('inviteCode').value = '';
             } else {
                 title.innerText = 'Tạo tài khoản';
                 subtitle.innerText = 'Bắt đầu hành trình tài chính mới';
                 btn.innerText = 'Đăng ký';
                 question.innerText = 'Đã có tài khoản?';
                 action.innerText = 'Đăng nhập ngay';
+                document.getElementById('inviteCode').style.display = 'block';
             }
         }
 
@@ -131,15 +135,27 @@
                 return;
             }
 
+            if (!isLogin) {
+                const invCode = document.getElementById('inviteCode').value;
+                if (!invCode) {
+                    msg.innerText = 'Vui lòng nhập mã đăng ký';
+                    msg.className = 'error';
+                    return;
+                }
+            }
+
             const url = isLogin ? '/login' : '/register';
             msg.innerText = 'Đang xử lý...';
             msg.className = '';
+
+            const reqBody = { email, password };
+            if (!isLogin) reqBody.invite_code = document.getElementById('inviteCode').value;
 
             try {
                 const res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify(reqBody)
                 });
 
                 const data = await res.json();
